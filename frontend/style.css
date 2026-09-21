@@ -1,0 +1,288 @@
+:root {
+    --primary-color: #0064d9;
+    --primary-hover: #004bb5;
+    --bg-color: #f4f6f9;
+    --card-bg: #ffffff;
+    --text-color: #333333;
+    --text-muted: #666666;
+    --border-color: #e0e0e0;
+    --error-color: #d93838;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Authentication Screen */
+.auth-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    width: 100vw;
+    background: linear-gradient(135deg, #0064d9 0%, #002d6b 100%);
+}
+
+.auth-card {
+    background: var(--card-bg);
+    padding: 40px;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    width: 100%;
+    max-width: 400px;
+}
+
+.auth-card h2 {
+    margin-bottom: 8px;
+    color: var(--text-color);
+}
+
+.auth-card p {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin-bottom: 24px;
+}
+
+.input-group {
+    margin-bottom: 16px;
+}
+
+.input-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.input-group input:focus {
+    border-color: var(--primary-color);
+}
+
+.btn-primary {
+    width: 100%;
+    padding: 12px;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-hover);
+}
+
+.error-msg {
+    color: var(--error-color);
+    font-size: 13px;
+    margin-top: 12px;
+    text-align: center;
+}
+
+/* Dashboard Layout */
+.app-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.app-header {
+    background: var(--card-bg);
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.header-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-title h1 {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.badge {
+    background-color: #e1f5fe;
+    color: #0288d1;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.2s;
+}
+
+.btn-secondary:hover {
+    background: #f0f0f0;
+}
+
+/* Chat Workspace */
+.chat-workspace {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    max-width: 900px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 20px;
+    overflow: hidden;
+}
+
+.chat-history {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.message {
+    display: flex;
+    max-width: 85%;
+}
+
+.ai-message {
+    align-self: flex-start;
+}
+
+.user-message {
+    align-self: flex-end;
+}
+
+.message-content {
+    background: var(--card-bg);
+    padding: 14px 18px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.user-message .message-content {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+}
+
+/* Chat Input Bar */
+.chat-input-area {
+    margin-top: 16px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px;
+}
+
+#chat-form {
+    display: flex;
+    gap: 8px;
+}
+
+#user-input {
+    flex: 1;
+    padding: 10px 14px;
+    border: none;
+    outline: none;
+    font-size: 14px;
+}
+
+.btn-send {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 0 20px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-send:hover {
+    background-color: var(--primary-hover);
+}
+/* Stop Button Hover */
+#stop-btn:hover {
+    background-color: #c82333;
+    border-color: #bd2130;
+}
+
+/* Dynamic Action Chips */
+.action-chips-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 15px;
+    padding-top: 12px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.action-chip {
+    background-color: #f0f4f8;
+    color: #0056b3;
+    border: 1px solid #cce5ff;
+    padding: 6px 14px;
+    border-radius: 16px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.action-chip:hover {
+    background-color: #e2eaf3;
+    border-color: #0056b3;
+}
+
+.utility-chip {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+    border-color: #c8e6c9;
+}
+
+.utility-chip:hover {
+    background-color: #c8e6c9;
+    border-color: #2e7d32;
+}

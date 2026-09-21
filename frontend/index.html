@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAP Business One Intelligence Assistant</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Login Overlay / Container -->
+    <div id="login-container" class="auth-wrapper">
+        <div class="auth-card">
+            <h2>SAP B1 Assistant</h2>
+            <p>Sign in with your enterprise credentials</p>
+            <form id="login-form">
+                <div class="input-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" required placeholder="admin">
+                </div>
+                <div class="input-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn-primary">Sign In</button>
+            </form>
+            <div id="login-error" class="error-msg"></div>
+        </div>
+    </div>
+
+    <!-- Chat Dashboard Container (Hidden until logged in) -->
+    <div id="app-container" class="app-layout hidden">
+        <header class="app-header">
+            <div class="header-title">
+                <h1>SAP Business One Intelligence Assistant</h1>
+                <span class="badge">PAI_LIVE1 Live DB</span>
+            </div>
+            <button id="logout-btn" class="btn-secondary">Sign Out</button>
+        </header>
+
+        <main class="chat-workspace">
+            <div id="chat-history" class="chat-history">
+                <div class="message ai-message">
+                    <div class="message-content">
+                        Welcome! I am connected to the live SAP B1 database. Ask me about sales orders, invoices, inventory, or customer master records.
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <form id="chat-form" style="display: flex; width: 100%; gap: 10px;">
+                    <input type="text" id="user-input" style="flex: 1; padding: 12px; border-radius: 6px; border: 1px solid #ccc;" placeholder="e.g., Show details for sales order 25000127..." autocomplete="off" />
+                    <button type="submit" class="btn-send" style="padding: 10px 20px; border-radius: 6px; cursor: pointer;">Send</button>
+                    <button type="button" id="stop-btn" class="hidden" style="background-color: #dc3545; color: white; padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer;">Stop 🛑</button>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html> 
