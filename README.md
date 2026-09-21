@@ -23,3 +23,29 @@ By leveraging advanced NLP and a single-pass reasoning loop, the engine autonomo
 ```bash
 git clone [https://github.com/yourusername/your-repo-name.git](https://github.com/yourusername/your-repo-name.git)
 cd your-repo-name
+
+2. Configure your environment variables:
+Create a .env file in the root directory and add your necessary API keys and database credentials:
+
+Code snippet
+ANTHROPIC_API_KEY=your_api_key_here
+CLAUDE_MODEL=claude-sonnet-4-6
+# Add any SAP HANA / VZone connection URLs here
+3. Install the required dependencies:
+It is recommended to use a virtual environment. Install the necessary Python packages using pip:
+
+Bash
+pip install -r requirements.txt
+4. Run the server:
+Start the FastAPI backend using Uvicorn with live reloading enabled:
+
+Bash
+uvicorn backend.main:app --reload
+The server will start running locally at http://127.0.0.1:8000
+
+📊 Usage Examples
+Once the server is running, the AI can seamlessly handle analytical search queries such as:
+
+"Show sales value by branch and product category so that I can compare performance."
+
+"Give me the top 20 suppliers by purchase value."
