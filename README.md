@@ -1,4 +1,4 @@
-# My Smart AI Project: SAP HANA Intelligence Agent
+# Smart AI Project: SAP HANA Intelligence Agent
 
 This project is an autonomous, AI-powered search engine and data agent built specifically for SAP Business One. It translates natural language questions into optimized, read-only SAP HANA SQL queries, executing them in real-time to provide immediate business intelligence. 
 
