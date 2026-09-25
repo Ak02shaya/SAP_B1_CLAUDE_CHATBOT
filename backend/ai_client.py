@@ -74,11 +74,11 @@ TOOLS = [
     },
     {
         "name": "execute_sap_sql",
-        "description": "Executes a single read-only SELECT statement on SAP HANA. Use this to fetch the final data.",
+        "description": "Executes a single read-only SELECT statement on SAP HANA. ALWAYS use SELECT TOP 25.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "sql_query": {"type": "string", "description": "Flat HANA SELECT query. NO WITH clauses, NO subqueries."}
+                "sql_query": {"type": "string", "description": "Flat HANA SELECT query starting with SELECT TOP 25. NO WITH clauses."}
             },
             "required": ["sql_query"]
         }
@@ -155,15 +155,19 @@ async def ask_ai_assistant(
 
     history_str = json.dumps(conversation_history[-4:]) if conversation_history else "None"
     
+    # Token Tracking Variables
+    session_input_tokens = 0
+    session_output_tokens = 0
+    
     # FAILSAFE: Triggers if company_id is "PAI", "PAI_LIVE1", empty, or "DEFAULT"
     pailive_rules = ""
     if "pai" in company_id.lower() or company_id.lower() in ["default", ""]:
         pailive_rules = """
 PAI_LIVE1 DATABASE STRICT BUSINESS RULES (MANDATORY - DO NOT IGNORE):
-1. EXCLUDE CWH (CRITICAL): You MUST explicitly add a filter to exclude CWH branches in your WHERE clause (e.g., `AND T0."U_ReqWhs" NOT LIKE 'CWH%'` or using the correct table alias). If you do not filter out CWH, the query is a failure.
+1. EXCLUDE CWH (CRITICAL): You MUST explicitly filter out CWH branches using EXACTLY this syntax: `AND IFNULL(T0."U_ReqWhs", '') NOT LIKE 'CWH%'` (adjust table alias if needed). Using IFNULL is mandatory to prevent dropping unassigned revenue.
 2. MANDATORY LOCATION & BRANCH NAMES (CRITICAL): Whenever asked for branch sales, you MUST `LEFT JOIN "OWHS" T2 ON T0."U_ReqWhs" = T2."WhsCode"`. You MUST select `T2."WhsName"` (Branch Name) and `T2."U_Location"` (Location). NEVER just output the raw U_ReqWhs code.
 3. BRANCH LOGIC: In transactions, ignore Invoice Branch. ALWAYS use 'Order Branch' (U_ReqWhs). Use IFNULL to retain unassigned branches instead of filtering them out.
-4. EXCLUDE DEFECTIVE WAREHOUSE: Explicitly filter them out.
+4. EXCLUDE DEFECTIVE WAREHOUSE: Explicitly filter them out using `AND IFNULL(T2."WhsCode", '') NOT LIKE '%DEFECT%'`.
 5. EXCLUDE STOCK TRANSFERS: Do not count them as sales.
 6. EXCLUDE CARRY BAGS: Ignore 'PAI Carry Bag' in product queries.
 """
@@ -179,7 +183,7 @@ COMPANY CONTEXT (ID: {company_id}):
 OPERATING PROTOCOL:
 1. Schema Known: The schema details are listed above. Do NOT call discover_metadata unless explicitly asked for an unknown field.
 2. Firewall Restrictions: ALWAYS write flat SELECT statements. NO CTEs (WITH clauses).
-3. STRICT ROW LIMIT: For any list or data dump, you MUST use SELECT TOP 25. Never return more than 25 records.
+3. STRICT ROW LIMIT (CRITICAL): You MUST explicitly write `SELECT TOP 25` in every single query. Never use TOP 50 or leave it unbounded. This is a strict firewall rule.
 4. FINAL SUBMISSION (CRITICAL): Once you have fetched the data via execute_sap_sql, you MUST immediately call the `submit_dashboard` tool to present the final answer. Do not output conversational text.
 5. NO TABLE NAMES IN SUMMARY: When writing your analysis and solution_evaluation, NEVER mention SAP database table names (like OINV, OWHS, INV1).
 6. MANDATORY REPORT LAYOUT: 
@@ -211,6 +215,18 @@ OPERATING PROTOCOL:
             except TypeError:
                 response = await client.messages.create(**kwargs)
 
+            # --- TOKEN TRACKING ---
+            if hasattr(response, 'usage'):
+                in_tokens = response.usage.input_tokens
+                out_tokens = response.usage.output_tokens
+                session_input_tokens += in_tokens
+                session_output_tokens += out_tokens
+                
+                print(f"\n" + "-"*40)
+                print(f"🪙 API TOKEN USAGE (Step {step + 1}):")
+                print(f"Input: {in_tokens} | Output: {out_tokens} | Total: {in_tokens + out_tokens}")
+                print("-"*40 + "\n")
+
             messages.append({"role": "assistant", "content": response.content})
 
             if response.stop_reason == "tool_use":
@@ -220,6 +236,13 @@ OPERATING PROTOCOL:
                         # Single-Pass Termination with Fallback Safety
                         if block.name == "submit_dashboard":
                             exec_time_ms = round((time.perf_counter() - start_time) * 1000, 2)
+                            
+                            # Print Grand Total Before Exiting
+                            print(f"\n" + "="*50)
+                            print(f"💰 FINAL SESSION TOKEN USAGE:")
+                            print(f"Total Input: {session_input_tokens} | Total Output: {session_output_tokens}")
+                            print(f"Total Execution Time: {exec_time_ms} ms")
+                            print("="*50 + "\n")
                             
                             try:
                                 result = DashboardResponse.model_validate(block.input).model_dump()
