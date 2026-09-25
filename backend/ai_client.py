@@ -78,7 +78,7 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "sql_query": {"type": "string", "description": "Flat HANA SELECT query starting with SELECT TOP 25. NO WITH clauses."}
+                "sql_query": {"type": "string", "description": "Flat HANA SELECT query starting with SELECT TOP 25. NO WITH clauses, NO WINDOW FUNCTIONS."}
             },
             "required": ["sql_query"]
         }
@@ -91,7 +91,6 @@ TOOLS = [
 ]
 
 async def handle_agent_tool(tool_name: str, tool_input: dict) -> str:
-    """Executes agent tools with caching and hard limits for speed."""
     if tool_name == "discover_metadata":
         company_id = tool_input.get("company_id", "DEFAULT")
         table_id = tool_input.get("table_id", "").strip().upper()
@@ -107,9 +106,13 @@ async def handle_agent_tool(tool_name: str, tool_input: dict) -> str:
             where_clause += f""" AND (LOWER("Descr") LIKE '%{keyword}%' OR LOWER("AliasID") LIKE '%{keyword}%')"""
 
         meta_sql = f"""SELECT "TableID", "AliasID", "Descr" FROM "CUFD" WHERE {where_clause}"""
-        result = await execute_sap_query(meta_sql)
+        
+        try:
+            result = await asyncio.wait_for(execute_sap_query(meta_sql), timeout=10.0)
+        except asyncio.TimeoutError:
+            return "DATABASE ERROR: Metadata discovery timed out after 10 seconds."
 
-        if "error" in result:
+        if isinstance(result, dict) and "error" in result:
             return f"Metadata discovery error: {result['error']}"
         if not result:
             response = f"No custom fields found for {table_id} matching '{keyword}'."
@@ -132,11 +135,17 @@ async def handle_agent_tool(tool_name: str, tool_input: dict) -> str:
         if not is_sql_safe(sql):
             return "ERROR: Query rejected by security filter. No CTEs (WITH) allowed."
 
-        result = await execute_sap_query(sql)
-        if "error" in result:
+        try:
+            result = await asyncio.wait_for(execute_sap_query(sql), timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.warning(f"SQL execution timed out: {sql}")
+            return "DATABASE ERROR: Query execution timed out after 10 seconds. The joins were too heavy or inefficient. Simplify the query and retry."
+        except Exception as e:
+            return f"DATABASE ERROR: {str(e)}. Analyze this error, rewrite the SQL, and retry."
+
+        if isinstance(result, dict) and "error" in result:
             return f"DATABASE ERROR: {result['error']}. Analyze this error, rewrite the SQL, and retry."
 
-        # Hard limit of 25 rows to keep response speeds fast
         return json.dumps(result[:25], default=str)
 
     return "Unknown tool invoked."
@@ -155,19 +164,17 @@ async def ask_ai_assistant(
 
     history_str = json.dumps(conversation_history[-4:]) if conversation_history else "None"
     
-    # Token Tracking Variables
     session_input_tokens = 0
     session_output_tokens = 0
     
-    # FAILSAFE: Triggers if company_id is "PAI", "PAI_LIVE1", empty, or "DEFAULT"
     pailive_rules = ""
     if "pai" in company_id.lower() or company_id.lower() in ["default", ""]:
         pailive_rules = """
 PAI_LIVE1 DATABASE STRICT BUSINESS RULES (MANDATORY - DO NOT IGNORE):
-1. EXCLUDE CWH (CRITICAL): You MUST explicitly filter out CWH branches using EXACTLY this syntax: `AND IFNULL(T0."U_ReqWhs", '') NOT LIKE 'CWH%'` (adjust table alias if needed). Using IFNULL is mandatory to prevent dropping unassigned revenue.
-2. MANDATORY LOCATION & BRANCH NAMES (CRITICAL): Whenever asked for branch sales, you MUST `LEFT JOIN "OWHS" T2 ON T0."U_ReqWhs" = T2."WhsCode"`. You MUST select `T2."WhsName"` (Branch Name) and `T2."U_Location"` (Location). NEVER just output the raw U_ReqWhs code.
-3. BRANCH LOGIC: In transactions, ignore Invoice Branch. ALWAYS use 'Order Branch' (U_ReqWhs). Use IFNULL to retain unassigned branches instead of filtering them out.
-4. EXCLUDE DEFECTIVE WAREHOUSE: Explicitly filter them out using `AND IFNULL(T2."WhsCode", '') NOT LIKE '%DEFECT%'`.
+1. EXCLUDE CWH (CRITICAL): You MUST explicitly add a filter to exclude CWH branches in your WHERE clause (e.g., `AND T0."U_ReqWhs" NOT LIKE 'CWH%'`).
+2. MANDATORY LOCATION & BRANCH NAMES (CRITICAL): Whenever asked for branch sales, you MUST `LEFT JOIN "OWHS" T2 ON T0."U_ReqWhs" = T2."WhsCode"`. Select `T2."WhsName"` and use `IFNULL(NULLIF(T2."U_Location", ''), 'Unassigned') AS "Location"`. NEVER just output the raw code.
+3. BRANCH LOGIC: ALWAYS use 'Order Branch' (U_ReqWhs).
+4. EXCLUDE DEFECTIVE WAREHOUSE: Explicitly filter them out.
 5. EXCLUDE STOCK TRANSFERS: Do not count them as sales.
 6. EXCLUDE CARRY BAGS: Ignore 'PAI Carry Bag' in product queries.
 """
@@ -176,24 +183,30 @@ PAI_LIVE1 DATABASE STRICT BUSINESS RULES (MANDATORY - DO NOT IGNORE):
 
 COMPANY CONTEXT (ID: {company_id}):
 - Order Branch is stored in T1."U_ReqWhs" or T0."U_ReqWhs".
-- Product Categories/Brands are stored in OITB ("ItmsGrpNam").
+- Product Categories/Brands are stored in OITB ("ItmsGrpNam") and OMRC ("FirmName").
 - Always use flat SELECT statements with JOINs. No CTEs (WITH clauses).
 {pailive_rules}
 
 OPERATING PROTOCOL:
-1. Schema Known: The schema details are listed above. Do NOT call discover_metadata unless explicitly asked for an unknown field.
-2. Firewall Restrictions: ALWAYS write flat SELECT statements. NO CTEs (WITH clauses).
-3. STRICT ROW LIMIT (CRITICAL): You MUST explicitly write `SELECT TOP 25` in every single query. Never use TOP 50 or leave it unbounded. This is a strict firewall rule.
-4. FINAL SUBMISSION (CRITICAL): Once you have fetched the data via execute_sap_sql, you MUST immediately call the `submit_dashboard` tool to present the final answer. Do not output conversational text.
-5. NO TABLE NAMES IN SUMMARY: When writing your analysis and solution_evaluation, NEVER mention SAP database table names (like OINV, OWHS, INV1).
-6. MANDATORY REPORT LAYOUT: 
-   - DECIMAL PRECISION: Preserve exactly 2 decimal places for financial values as retrieved from the database.
-   - TABLE RENDERING (CRITICAL): You MUST leave a blank line before and after any Markdown table so it renders correctly on the frontend.
-   - FORMATTING: Use bold text for section titles preceded by emojis (e.g., **📊 METRIC SUMMARY**). Do NOT use Markdown heading tags (e.g., #, ##).
+1. Schema Known: 'Accounts' usually means General Ledger (OACT, JDT1). 'Customers' means Business Partners (OCRD). In OACT, use `"Frozen" = 'N'` for active accounts. Do NOT use "Active".
+2. Firewall Restrictions: ALWAYS write flat SELECT statements. NO CTEs. NO Window Functions. Subqueries in the WHERE clause ARE allowed.
+3. STRICT ROW LIMIT: ALWAYS use `SELECT TOP 25`. Never return more than 25 records.
+4. DYNAMIC DATE HANDLING (CRITICAL): The database contains historical data, so the system's `CURRENT_DATE` will return empty results. You MUST use subqueries to dynamically find the latest date in the database based on the requested table.
+   - For 'Current Month': `WHERE YEAR("DocDate") = (SELECT YEAR(MAX("DocDate")) FROM "OINV") AND MONTH("DocDate") = (SELECT MONTH(MAX("DocDate")) FROM "OINV")`
+   - For 'Last Year': `WHERE YEAR("DocDate") = (SELECT YEAR(MAX("DocDate")) - 1 FROM "OINV")`
+   - Apply this exact subquery logic using "RefDate" when querying finance (JDT1) and "DocDate" for sales (OINV).
+   - You MUST explicitly mention the actual resolved Month and Year (e.g., "March 2025") in your Executive Summary.
+5. PERFECTIONISM OVERRIDE (CRITICAL): Run ONE single query. Extract whatever insights you can strictly from the TOP 25 rows returned and call submit_dashboard IMMEDIATELY. Do NOT loop multiple times.
+6. FINAL SUBMISSION (CRITICAL): Once you have fetched the data via execute_sap_sql, you MUST immediately call the `submit_dashboard` tool.
+7. MANDATORY REPORT LAYOUT: 
+   - NO META-WARNINGS: NEVER output warnings, disclaimers, warning emojis (⚠️), or notes about data limitations. 
+   - DECIMAL PRECISION: Preserve exactly 2 decimal places.
+   - TABLE RENDERING: Leave a blank line before and after any Markdown table.
+   - FORMATTING: Use bold text for section titles preceded by emojis. Do NOT use Markdown heading tags.
 """
 
     messages = [{"role": "user", "content": f"History: {history_str}\nUser Question: {question}"}]
-    max_steps = 10
+    max_steps = 3
 
     for step in range(max_steps):
         try:
@@ -211,11 +224,10 @@ OPERATING PROTOCOL:
                 "tools": TOOLS
             }
             try:
-                response = await client.messages.create(**kwargs, temperature=0.1)
+                response = await client.messages.create(**kwargs, temperature=0.0)
             except TypeError:
                 response = await client.messages.create(**kwargs)
 
-            # --- TOKEN TRACKING ---
             if hasattr(response, 'usage'):
                 in_tokens = response.usage.input_tokens
                 out_tokens = response.usage.output_tokens
@@ -233,11 +245,9 @@ OPERATING PROTOCOL:
                 for block in response.content:
                     if block.type == "tool_use":
                         
-                        # Single-Pass Termination with Fallback Safety
                         if block.name == "submit_dashboard":
                             exec_time_ms = round((time.perf_counter() - start_time) * 1000, 2)
                             
-                            # Print Grand Total Before Exiting
                             print(f"\n" + "="*50)
                             print(f"💰 FINAL SESSION TOKEN USAGE:")
                             print(f"Total Input: {session_input_tokens} | Total Output: {session_output_tokens}")
@@ -247,7 +257,7 @@ OPERATING PROTOCOL:
                             try:
                                 result = DashboardResponse.model_validate(block.input).model_dump()
                             except Exception as format_error:
-                                logger.warning(f"AI JSON Formatting Error (Safely recovering): {format_error}")
+                                logger.warning(f"AI JSON Formatting Error: {format_error}")
                                 result = {
                                     "analysis": str(block.input.get("analysis", "Query executed successfully.")),
                                     "solution_evaluation": str(block.input.get("solution_evaluation", "Task completed.")),
@@ -273,8 +283,8 @@ OPERATING PROTOCOL:
 
     total_time = round((time.perf_counter() - start_time) * 1000, 2)
     return _empty_dashboard(
-        "The assistant timed out while attempting to map the data schema.",
-        "Execution aborted.",
+        "The assistant timed out after maximum attempts to map the data schema.",
+        "Execution aborted to prevent excessive API costs.",
         ["Try specifying standard SAP modules"],
         total_time
     )
