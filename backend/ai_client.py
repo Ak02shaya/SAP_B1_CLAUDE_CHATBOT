@@ -23,8 +23,8 @@ SCHEMA_CACHE = {}
 
 # --- 1. RESPONSE MODEL ---
 class DashboardResponse(BaseModel):
-    analysis: str = Field(description="Factual analysis from live data. Use \\n for clean row-by-row output.")
-    solution_evaluation: str = Field(description="Operational verification or analytical takeaway.")
+    analysis: str = Field(description="Structured dashboard report formatted strictly with Markdown tables and visual sections.")
+    solution_evaluation: str = Field(description="Key observations and analytical takeaway without table names.")
     suggestions: list[str] = Field(description="3 context-aware follow-up business queries.")
 
 dashboard_schema = DashboardResponse.model_json_schema()
@@ -136,8 +136,8 @@ async def handle_agent_tool(tool_name: str, tool_input: dict) -> str:
         if "error" in result:
             return f"DATABASE ERROR: {result['error']}. Analyze this error, rewrite the SQL, and retry."
 
-        # Hard limit of 20 rows to keep response speeds fast
-        return json.dumps(result[:20], default=str)
+        # Hard limit of 25 rows to keep response speeds fast
+        return json.dumps(result[:25], default=str)
 
     return "Unknown tool invoked."
 
@@ -155,22 +155,41 @@ async def ask_ai_assistant(
 
     history_str = json.dumps(conversation_history[-4:]) if conversation_history else "None"
     
+    # FAILSAFE: Triggers if company_id is "PAI", "PAI_LIVE1", empty, or "DEFAULT"
+    pailive_rules = ""
+    if "pai" in company_id.lower() or company_id.lower() in ["default", ""]:
+        pailive_rules = """
+PAI_LIVE1 DATABASE STRICT BUSINESS RULES (MANDATORY - DO NOT IGNORE):
+1. EXCLUDE CWH (CRITICAL): You MUST explicitly add a filter to exclude CWH branches in your WHERE clause (e.g., `AND T0."U_ReqWhs" NOT LIKE 'CWH%'` or using the correct table alias). If you do not filter out CWH, the query is a failure.
+2. MANDATORY LOCATION & BRANCH NAMES (CRITICAL): Whenever asked for branch sales, you MUST `LEFT JOIN "OWHS" T2 ON T0."U_ReqWhs" = T2."WhsCode"`. You MUST select `T2."WhsName"` (Branch Name) and `T2."U_Location"` (Location). NEVER just output the raw U_ReqWhs code.
+3. BRANCH LOGIC: In transactions, ignore Invoice Branch. ALWAYS use 'Order Branch' (U_ReqWhs). Use IFNULL to retain unassigned branches instead of filtering them out.
+4. EXCLUDE DEFECTIVE WAREHOUSE: Explicitly filter them out.
+5. EXCLUDE STOCK TRANSFERS: Do not count them as sales.
+6. EXCLUDE CARRY BAGS: Ignore 'PAI Carry Bag' in product queries.
+"""
+
     agent_system_prompt = f"""You are an expert autonomous SAP Business One (HANA) Intelligence Agent.
 
 COMPANY CONTEXT (ID: {company_id}):
-- Branch field is stored in T1."U_Whs" on invoice lines (INV1).
+- Order Branch is stored in T1."U_ReqWhs" or T0."U_ReqWhs".
 - Product Categories/Brands are stored in OITB ("ItmsGrpNam").
 - Always use flat SELECT statements with JOINs. No CTEs (WITH clauses).
+{pailive_rules}
 
 OPERATING PROTOCOL:
 1. Schema Known: The schema details are listed above. Do NOT call discover_metadata unless explicitly asked for an unknown field.
 2. Firewall Restrictions: ALWAYS write flat SELECT statements. NO CTEs (WITH clauses).
-3. STRICT ROW LIMIT: For any list or data dump, you MUST use SELECT TOP 20. Never return more than 20 records.
+3. STRICT ROW LIMIT: For any list or data dump, you MUST use SELECT TOP 25. Never return more than 25 records.
 4. FINAL SUBMISSION (CRITICAL): Once you have fetched the data via execute_sap_sql, you MUST immediately call the `submit_dashboard` tool to present the final answer. Do not output conversational text.
+5. NO TABLE NAMES IN SUMMARY: When writing your analysis and solution_evaluation, NEVER mention SAP database table names (like OINV, OWHS, INV1).
+6. MANDATORY REPORT LAYOUT: 
+   - DECIMAL PRECISION: Preserve exactly 2 decimal places for financial values as retrieved from the database.
+   - TABLE RENDERING (CRITICAL): You MUST leave a blank line before and after any Markdown table so it renders correctly on the frontend.
+   - FORMATTING: Use bold text for section titles preceded by emojis (e.g., **📊 METRIC SUMMARY**). Do NOT use Markdown heading tags (e.g., #, ##).
 """
 
     messages = [{"role": "user", "content": f"History: {history_str}\nUser Question: {question}"}]
-    max_steps = 5
+    max_steps = 10
 
     for step in range(max_steps):
         try:
