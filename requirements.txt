@@ -1,0 +1,15 @@
+# Web Framework & Server
+fastapi
+uvicorn
+
+# AI & Data Validation
+anthropic
+pydantic
+
+# Local ML & Semantic Cache
+chromadb
+sentence-transformers
+
+# Utilities & Database Connections
+python-dotenv
+httpx
